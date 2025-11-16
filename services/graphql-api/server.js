@@ -1,4 +1,4 @@
-// services/graphql-api/server.js (Kode Lengkap & Stabil)
+// services/graphql-api/server.js - Task Service (GraphQL)
 
 const express = require('express');
 const { ApolloServer } = require('apollo-server-express');
@@ -8,20 +8,21 @@ const cors = require('cors');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 
-// --- Impor untuk FIX Subscription ---
+// --- Import untuk Subscription via graphql-ws ---
 const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
 const { useServer } = require('graphql-ws/lib/use/ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
-// ------------------------------------
+// -----------------------------------------------
 
+// ====== JWT Public Key Integration (Auth from User Service) ======
 const AUTH_PUBLIC_KEY_URL = process.env.AUTH_PUBLIC_KEY_URL;
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
 const PUBLIC_KEY_ENDPOINTS = [
   AUTH_PUBLIC_KEY_URL,
   AUTH_SERVICE_URL ? `${AUTH_SERVICE_URL.replace(/\/$/, '')}/api/auth/public-key` : null,
   'http://rest-api:3001/api/auth/public-key',
-  'http://localhost:3001/api/auth/public-key'
+  'http://localhost:3001/api/auth/public-key',
 ].filter(Boolean);
 
 let cachedAuthPublicKey = '';
@@ -36,11 +37,11 @@ async function getAuthPublicKey() {
       const response = await axios.get(endpoint);
       if (response.data) {
         cachedAuthPublicKey = response.data;
-        console.log(`GraphQL API cached auth public key from ${endpoint}`);
+        console.log(`Task GraphQL API cached auth public key from ${endpoint}`);
         return cachedAuthPublicKey;
       }
     } catch (error) {
-      console.warn(`GraphQL API failed to fetch public key from ${endpoint}: ${error.message}`);
+      console.warn(`Task GraphQL API failed to fetch public key from ${endpoint}: ${error.message}`);
     }
   }
 
@@ -56,141 +57,228 @@ async function decodeToken(token) {
   return jwt.verify(token, publicKey, { algorithms: ['RS256'] });
 }
 
-getAuthPublicKey().catch(error => {
-  console.warn('GraphQL API initial public key fetch failed:', error.message);
+getAuthPublicKey().catch((error) => {
+  console.warn('Task GraphQL API initial public key fetch failed:', error.message);
 });
+// ================================================================
 
 const app = express();
 const pubsub = new PubSub();
 
-const POST_ADDED = 'POST_ADDED';
-const COMMENT_ADDED = 'COMMENT_ADDED';
-const POST_UPDATED = 'POST_UPDATED';
-const POST_DELETED = 'POST_DELETED';
+// Event names untuk subscription
+const TASK_CREATED = 'TASK_CREATED';
+const TASK_UPDATED = 'TASK_UPDATED';
+const TASK_DELETED = 'TASK_DELETED';
+const TASK_ACTIVITY_ADDED = 'TASK_ACTIVITY_ADDED';
 
-app.use(cors({
-  origin: [
-    'http://localhost:3000', 'http://localhost:3002',
-    'http://api-gateway:3000', 'http://frontend-app:3002'
-  ],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'http://api-gateway:3000',
+      'http://frontend-app:3002',
+    ],
+    credentials: true,
+  }),
+);
 
-// === Database In-Memory ASLI (Posts/Comments) ===
-let posts = [
-  { id: '1', title: 'Welcome to Microservices Security', content: 'This post is secured by JWT passed through the API Gateway!', author: 'John Doe', createdAt: new Date().toISOString() },
-  { id: '2', title: 'Authentication is Working', content: 'Check the logs when you try to delete this post as a non-admin!', author: 'Jane Smith', createdAt: new Date().toISOString() }
+// === Database in-memory: Tasks & TaskActivities ===
+let tasks = [
+  {
+    id: 't1',
+    title: 'Setup project structure',
+    description: 'Inisialisasi repository, konfigurasi Docker, dan API Gateway.',
+    status: 'TODO', // TODO | IN_PROGRESS | DONE
+    assignee: 'John Doe',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 't2',
+    title: 'Implement JWT authentication',
+    description: 'Integrasi JWT RS256 antara User Service dan API Gateway.',
+    status: 'IN_PROGRESS',
+    assignee: 'Jane Smith',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
 ];
-let comments = [
-  { id: '1', postId: '1', content: 'I am a secure comment!', author: 'John Doe', createdAt: new Date().toISOString() }
-];
-// ===============================================
 
-// === Skema GraphQL ASLI (Type Definitions) - DENGAN INPUT AUTHOR ===
+let taskActivities = [
+  {
+    id: 'a1',
+    taskId: 't2',
+    message: 'Task created',
+    author: 'Jane Smith',
+    createdAt: new Date().toISOString(),
+  },
+];
+// ==================================================
+
+// === Schema GraphQL: Task Management ===
 const typeDefs = `
-  type Post {
+  enum TaskStatus {
+    TODO
+    IN_PROGRESS
+    DONE
+  }
+
+  type Task {
     id: ID!
     title: String!
-    content: String!
-    author: String!
+    description: String!
+    status: TaskStatus!
+    assignee: String!
     createdAt: String!
-    comments: [Comment!]!
+    updatedAt: String!
+    activities: [TaskActivity!]!
   }
-  type Comment {
+
+  type TaskActivity {
     id: ID!
-    postId: ID!
-    content: String!
+    taskId: ID!
+    message: String!
     author: String!
     createdAt: String!
   }
+
   type Query {
-    posts: [Post!]!
-    post(id: ID!): Post
-    comments(postId: ID!): [Comment!]!
+    tasks: [Task!]!
+    task(id: ID!): Task
   }
+
   type Mutation {
-    createPost(title: String!, content: String!, author: String!): Post!
-    updatePost(id: ID!, title: String, content: String): Post!
-    deletePost(id: ID!): Boolean!
-    createComment(postId: ID!, content: String!, author: String!): Comment!
-    deleteComment(id: ID!): Boolean!
+    createTask(title: String!, description: String!, assignee: String!): Task!
+    updateTask(id: ID!, title: String, description: String, status: TaskStatus, assignee: String): Task!
+    addTaskActivity(taskId: ID!, message: String!): TaskActivity!
+    deleteTask(id: ID!): Boolean!
   }
+
   type Subscription {
-    postAdded: Post!
-    commentAdded: Comment!
-    postUpdated: Post!
-    postDeleted: ID!
+    taskCreated: Task!
+    taskUpdated: Task!
+    taskDeleted: ID!
+    taskActivityAdded: TaskActivity!
   }
 `;
 
-// === Resolvers ASLI (dengan logika Role Admin) ===
+// === Resolvers: Task Management + Authorization ===
 const resolvers = {
-  Query: { posts: () => posts, post: (_, { id }) => posts.find(post => post.id === id), comments: (_, { postId }) => comments.filter(comment => comment.postId === postId) },
-  Post: { comments: (parent) => comments.filter(comment => comment.postId === parent.id) },
+  Query: {
+    tasks: () => tasks,
+    task: (_, { id }) => tasks.find((task) => task.id === id),
+  },
+
+  Task: {
+    activities: (parent) => taskActivities.filter((a) => a.taskId === parent.id),
+  },
 
   Mutation: {
-    // RESOLVER createPost - MENGAMBIL AUTHOR DARI INPUT
-    createPost: (_, { title, content, author }, context) => { // <-- AUTHOR DIKEMBALIKAN
-      const postAuthor = author;
-      if (!context.userId) { throw new Error('Authentication required to create a post.'); }
-
-      const newPost = { id: uuidv4(), title, content, author: postAuthor, createdAt: new Date().toISOString() };
-      posts.push(newPost);
-      pubsub.publish(POST_ADDED, { postAdded: newPost });
-      return newPost;
-    },
-
-    updatePost: (_, { id, title, content }) => {
-      const postIndex = posts.findIndex(post => post.id === id);
-      if (postIndex === -1) { throw new Error('Post not found'); }
-      const updatedPost = { ...posts[postIndex], ...(title && { title }), ...(content && { content }) };
-      posts[postIndex] = updatedPost;
-      pubsub.publish(POST_UPDATED, { postUpdated: updatedPost });
-      return updatedPost;
-    },
-
-    deletePost: (_, { id }, context) => {
-      const postIndex = posts.findIndex(post => post.id === id);
-      if (postIndex === -1) { return false; }
-      const post = posts[postIndex];
-      
-      // LOGIKA HAK AKSES ADMIN
-      if (context.userRole === 'admin' || post.author === context.userName) {
-        comments = comments.filter(comment => comment.postId !== id);
-        posts.splice(postIndex, 1);
-        pubsub.publish(POST_DELETED, { postDeleted: id });
-        return true;
-      } else {
-        throw new Error('You are not authorized to delete this post.');
+    createTask: (_, { title, description, assignee }, context) => {
+      if (!context.userId) {
+        throw new Error('Authentication required to create a task.');
       }
+
+      const now = new Date().toISOString();
+      const task = {
+        id: uuidv4(),
+        title,
+        description,
+        status: 'TODO',
+        assignee: assignee || context.userName || 'Unassigned',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      tasks.push(task);
+      pubsub.publish(TASK_CREATED, { taskCreated: task });
+      return task;
     },
 
-    // RESOLVER createComment - MENGAMBIL AUTHOR DARI INPUT
-    createComment: (_, { postId, content, author }, context) => { // <-- AUTHOR DIKEMBALIKAN
-      const commentAuthor = author;
-      if (!context.userId) { throw new Error('Authentication required to comment.'); }
+    updateTask: (_, { id, title, description, status, assignee }, context) => {
+      const idx = tasks.findIndex((t) => t.id === id);
+      if (idx === -1) {
+        throw new Error('Task not found');
+      }
 
-      const post = posts.find(p => p.id === postId);
-      if (!post) { throw new Error('Post not found'); }
-      const newComment = { id: uuidv4(), postId, content, author: commentAuthor, createdAt: new Date().toISOString() };
-      comments.push(newComment);
-      pubsub.publish(COMMENT_ADDED, { commentAdded: newComment });
-      return newComment;
+      const task = tasks[idx];
+
+      // Hanya admin atau assignee yang boleh mengubah task
+      if (context.userRole !== 'admin' && task.assignee !== context.userName) {
+        throw new Error('You are not allowed to update this task.');
+      }
+
+      const updated = {
+        ...task,
+        ...(title && { title }),
+        ...(description && { description }),
+        ...(status && { status }),
+        ...(assignee && { assignee }),
+        updatedAt: new Date().toISOString(),
+      };
+
+      tasks[idx] = updated;
+      pubsub.publish(TASK_UPDATED, { taskUpdated: updated });
+      return updated;
     },
 
-    deleteComment: (_, { id }) => {
-      const commentIndex = comments.findIndex(comment => comment.id === id);
-      if (commentIndex === -1) { return false; }
-      comments.splice(commentIndex, 1);
+    addTaskActivity: (_, { taskId, message }, context) => {
+      if (!context.userId) {
+        throw new Error('Authentication required to add activity.');
+      }
+
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) {
+        throw new Error('Task not found');
+      }
+
+      const activity = {
+        id: uuidv4(),
+        taskId,
+        message,
+        author: context.userName || 'Unknown',
+        createdAt: new Date().toISOString(),
+      };
+
+      taskActivities.push(activity);
+      pubsub.publish(TASK_ACTIVITY_ADDED, { taskActivityAdded: activity });
+      return activity;
+    },
+
+    deleteTask: (_, { id }, context) => {
+      const idx = tasks.findIndex((t) => t.id === id);
+      if (idx === -1) {
+        return false;
+      }
+
+      const task = tasks[idx];
+
+      // Hanya admin atau assignee yang boleh menghapus task
+      if (context.userRole !== 'admin' && task.assignee !== context.userName) {
+        throw new Error('You are not allowed to delete this task.');
+      }
+
+      tasks.splice(idx, 1);
+      taskActivities = taskActivities.filter((a) => a.taskId !== id);
+      pubsub.publish(TASK_DELETED, { taskDeleted: id });
       return true;
     },
   },
 
   Subscription: {
-    postAdded: { subscribe: () => pubsub.asyncIterator([POST_ADDED]) },
-    commentAdded: { subscribe: () => pubsub.asyncIterator([COMMENT_ADDED]) },
-    postUpdated: { subscribe: () => pubsub.asyncIterator([POST_UPDATED]) },
-    postDeleted: { subscribe: () => pubsub.asyncIterator([POST_DELETED]) },
+    taskCreated: {
+      subscribe: () => pubsub.asyncIterator([TASK_CREATED]),
+    },
+    taskUpdated: {
+      subscribe: () => pubsub.asyncIterator([TASK_UPDATED]),
+    },
+    taskDeleted: {
+      subscribe: () => pubsub.asyncIterator([TASK_DELETED]),
+    },
+    taskActivityAdded: {
+      subscribe: () => pubsub.asyncIterator([TASK_ACTIVITY_ADDED]),
+    },
   },
 };
 
@@ -222,27 +310,27 @@ async function startServer() {
               userRole = decoded.role || userRole;
             }
           } catch (error) {
-            console.warn('GraphQL API token verification fallback failed:', error.message);
+            console.warn('Task GraphQL API token verification fallback failed:', error.message);
           }
         }
       }
 
       return { userId, userName, userEmail, userTeams, userRole, req };
     },
-    // ... (plugins) ...
   });
 
   await server.start();
   server.applyMiddleware({ app, path: '/graphql' });
 
   const PORT = process.env.PORT || 4000;
-  
-  // FIX: Setup Subscription yang Benar
+
+  // Setup Subscription server
   const httpServer = createServer(app);
   const wsServer = new WebSocketServer({ server: httpServer, path: server.graphqlPath });
   useServer({ schema }, wsServer);
+
   httpServer.listen(PORT, () => {
-    console.log(`🚀 Post/Comment Service (GraphQL) running on port ${PORT}`);
+    console.log(`Task Service (GraphQL) running on port ${PORT}`);
     console.log(`GraphQL endpoint: http://localhost:${PORT}${server.graphqlPath}`);
     console.log(`Subscriptions ready at ws://localhost:${PORT}${server.graphqlPath}`);
   });
@@ -252,22 +340,22 @@ async function startServer() {
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
-    service: 'post-comment-graphql-api',
+    service: 'task-graphql-api',
     timestamp: new Date().toISOString(),
     data: {
-      posts: posts.length,
-      comments: comments.length
-    }
+      tasks: tasks.length,
+      activities: taskActivities.length,
+    },
   });
 });
 
 // Error handling
 app.use((err, req, res, next) => {
-  console.error('GraphQL API Error:', err);
+  console.error('Task GraphQL API Error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-startServer().catch(error => {
-  console.error('Failed to start GraphQL server:', error);
+startServer().catch((error) => {
+  console.error('Failed to start Task GraphQL server:', error);
   process.exit(1);
 });
