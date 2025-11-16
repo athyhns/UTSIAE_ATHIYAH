@@ -1,5 +1,3 @@
-// services/graphql-api/server.js - Task Service (GraphQL)
-
 const express = require('express');
 const { ApolloServer } = require('apollo-server-express');
 const { PubSub } = require('graphql-subscriptions');
@@ -8,14 +6,11 @@ const cors = require('cors');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 
-// --- Import untuk Subscription via graphql-ws ---
 const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
 const { useServer } = require('graphql-ws/lib/use/ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
-// -----------------------------------------------
 
-// ====== JWT Public Key Integration (Auth from User Service) ======
 const AUTH_PUBLIC_KEY_URL = process.env.AUTH_PUBLIC_KEY_URL;
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
 const PUBLIC_KEY_ENDPOINTS = [
@@ -60,12 +55,10 @@ async function decodeToken(token) {
 getAuthPublicKey().catch((error) => {
   console.warn('Task GraphQL API initial public key fetch failed:', error.message);
 });
-// ================================================================
 
 const app = express();
 const pubsub = new PubSub();
 
-// Event names untuk subscription
 const TASK_CREATED = 'TASK_CREATED';
 const TASK_UPDATED = 'TASK_UPDATED';
 const TASK_DELETED = 'TASK_DELETED';
@@ -89,7 +82,7 @@ let tasks = [
     id: 't1',
     title: 'Setup project structure',
     description: 'Inisialisasi repository, konfigurasi Docker, dan API Gateway.',
-    status: 'TODO', // TODO | IN_PROGRESS | DONE
+    status: 'TODO',
     assignee: 'John Doe',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -114,9 +107,7 @@ let taskActivities = [
     createdAt: new Date().toISOString(),
   },
 ];
-// ==================================================
 
-// === Schema GraphQL: Task Management ===
 const typeDefs = `
   enum TaskStatus {
     TODO
@@ -163,7 +154,6 @@ const typeDefs = `
   }
 `;
 
-// === Resolvers: Task Management + Authorization ===
 const resolvers = {
   Query: {
     tasks: () => tasks,
@@ -204,7 +194,6 @@ const resolvers = {
 
       const task = tasks[idx];
 
-      // Hanya admin atau assignee yang boleh mengubah task
       if (context.userRole !== 'admin' && task.assignee !== context.userName) {
         throw new Error('You are not allowed to update this task.');
       }
@@ -254,7 +243,6 @@ const resolvers = {
 
       const task = tasks[idx];
 
-      // Hanya admin atau assignee yang boleh menghapus task
       if (context.userRole !== 'admin' && task.assignee !== context.userName) {
         throw new Error('You are not allowed to delete this task.');
       }
@@ -288,7 +276,6 @@ async function startServer() {
   const server = new ApolloServer({
     schema,
     context: async ({ req }) => {
-      // Membaca header yang disuntikkan Gateway, termasuk fallback decode token langsung
       let userId = req.headers['x-user-id'] || '';
       let userName = req.headers['x-user-name'] || 'Guest';
       let userEmail = req.headers['x-user-email'] || '';
@@ -324,7 +311,6 @@ async function startServer() {
 
   const PORT = process.env.PORT || 4000;
 
-  // Setup Subscription server
   const httpServer = createServer(app);
   const wsServer = new WebSocketServer({ server: httpServer, path: server.graphqlPath });
   useServer({ schema }, wsServer);

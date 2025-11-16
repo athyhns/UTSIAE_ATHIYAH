@@ -1,5 +1,3 @@
-// services/rest-api/routes/auth.js (Kode Lengkap)
-
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -10,7 +8,6 @@ const { validateUser } = require('../middleware/validation');
 
 const router = express.Router();
 
-// Database user in-memory: JANE SMITH = ADMIN, PWD = 123456
 if (!global.users) {
   global.users = [
     {
@@ -18,8 +15,7 @@ if (!global.users) {
       name: 'John Doe',
       email: 'john@example.com',
       age: 30,
-      role: 'user', 
-      // Hash untuk password: 123456
+      role: 'user',
       passwordHash: '$2a$10$.91iziEVWTK2toYSAX0rJ.gEzvFlJGfY/d0cL84W8pDbXT3vQYQAK',
       teams: ['t1'],
       createdAt: new Date().toISOString(),
@@ -30,8 +26,7 @@ if (!global.users) {
       name: 'Jane Smith',
       email: 'jane@example.com',
       age: 25,
-      role: 'admin', // <-- ROLE ADMIN DUMMY
-      // Hash untuk password: 123456
+      role: 'admin',
       passwordHash: '$2a$10$.91iziEVWTK2toYSAX0rJ.gEzvFlJGfY/d0cL84W8pDbXT3vQYQAK',
       teams: ['t1'],
       createdAt: new Date().toISOString(),
@@ -40,11 +35,8 @@ if (!global.users) {
   ];
 }
 
-
-// Membaca private key untuk *membuat* token
 const privateKey = fs.readFileSync(path.join(__dirname, '../private.key'), 'utf8');
 
-// POST /api/auth/register - Registrasi user baru
 router.post('/register', validateUser, async (req, res) => {
   const { name, email, age, password } = req.body; 
 
@@ -52,11 +44,9 @@ router.post('/register', validateUser, async (req, res) => {
     return res.status(409).json({ error: 'Email already exists' });
   }
 
-  // LOGIKA ADMIN PERTAMA
   const hasAdmin = global.users.some(u => u.role === 'admin');
   const role = hasAdmin ? 'user' : 'admin'; 
 
-  // Hash password
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
 
@@ -80,7 +70,6 @@ router.post('/register', validateUser, async (req, res) => {
   });
 });
 
-// POST /api/auth/login - Login user
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -94,7 +83,6 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials (password mismatch)' });
   }
 
-  // Buat JWT Token
   const payload = {
     userId: user.id,
     email: user.email,
@@ -115,7 +103,6 @@ router.post('/login', async (req, res) => {
   });
 });
 
-// GET /api/auth/public-key - Endpoint untuk API Gateway
 router.get('/public-key', (req, res) => {
   try {
     const publicKey = fs.readFileSync(path.join(__dirname, '../public.key'), 'utf8');

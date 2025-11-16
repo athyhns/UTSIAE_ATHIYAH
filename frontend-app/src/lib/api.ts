@@ -1,5 +1,3 @@
-// frontend-app/src/lib/api.ts (Kode Lengkap)
-
 import axios from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000';
@@ -11,7 +9,6 @@ export const apiClient = axios.create({
   },
 });
 
-// === INTERCEPTOR ===
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -24,9 +21,7 @@ apiClient.interceptors.request.use(
     return Promise.reject(error);
   }
 );
-// =========================
 
-// --- API Service untuk Autentikasi ---
 export const authApi = {
   login: (data: { email: string; password: any }) => 
     apiClient.post('/api/auth/login', data),
@@ -34,9 +29,7 @@ export const authApi = {
   register: (data: { name: string; email: string; age: number; password: any }) => 
     apiClient.post('/api/auth/register', data),
 };
-// ===========================================
 
-// User API calls (Dibutuhkan untuk Admin Panel)
 export const userApi = {
   getUsers: () => apiClient.get('/api/users'),
   getUser: (id: string) => apiClient.get(`/api/users/${id}`),

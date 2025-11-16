@@ -1,5 +1,3 @@
-// api-gateway/server.js (Kode Lengkap)
-
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const cors = require('cors');
@@ -29,7 +27,6 @@ async function fetchPublicKey() {
   }
 }
 
-// Security middleware
 app.use(helmet());
 app.use(cors({
   origin: ['http://localhost:3002', 'http://frontend-app:3002'],
@@ -44,8 +41,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-
-// === MIDDLEWARE AUTHENTICATION (SATPAM) ===
 app.use(async (req, res, next) => {
   
   const publicRoutes = [
@@ -69,14 +64,12 @@ app.use(async (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized: No token provided.' });
   }
 
-  // PERBAIKAN KRITIKAL: Algoritma harus RS256
-  jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] }, (err, decoded) => { // <-- FIXED
+  jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] }, (err, decoded) => {
     if (err) {
       console.error('JWT Verify Error:', err.message);
       return res.status(401).json({ error: 'Unauthorized: Invalid token.' });
     }
 
-    // Token valid! Suntikkan data ke header
     req.headers['x-user-id'] = decoded.userId;
     req.headers['x-user-name'] = decoded.name;
     req.headers['x-user-email'] = decoded.email;
@@ -86,10 +79,7 @@ app.use(async (req, res, next) => {
     next(); 
   });
 });
-// ==========================================
 
-
-// Proxy configuration for REST API (User Service)
 const restApiProxy = createProxyMiddleware({
   target: USER_SERVICE_URL,
   changeOrigin: true,
@@ -105,7 +95,6 @@ const restApiProxy = createProxyMiddleware({
   }
 });
 
-// Proxy configuration for GraphQL API (Task Service)
 const graphqlApiProxy = createProxyMiddleware({
   target: GRAPHQL_API_URL,
   changeOrigin: true,

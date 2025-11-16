@@ -1,18 +1,11 @@
-// services/rest-api/routes/users.js (Kode Lengkap)
-
 const express = require('express');
 const { v4: uuidv4 } = require('uuid'); 
 const { validateUser, validateUserUpdate } = require('../middleware/validation');
-const { isAdmin } = require('../middleware/authMiddleware'); // <-- IMPOR BARU
+const { isAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// ... (logika GET /api/users dan GET /api/users/:id tetap sama) ...
-// Logika yang lebih bersih di bawah:
-
-// GET /api/users - Get all users
 router.get('/', (req, res) => {
-  // ... (Logika GET di sini) ...
   let filteredUsers = global.users ? [...global.users] : [];
   
   const stripPassword = (user) => {
@@ -23,7 +16,6 @@ router.get('/', (req, res) => {
   res.json(filteredUsers);
 });
 
-// GET /api/users/:id - Get user by ID
 router.get('/:id', (req, res) => {
   if (!global.users) {
     return res.status(500).json({ error: 'User data not initialized' });
@@ -37,15 +29,12 @@ router.get('/:id', (req, res) => {
 });
 
 
-// PUT /api/users/:id - Update user (HANYA ADMIN)
-router.put('/:id', isAdmin, validateUserUpdate, (req, res) => { // <-- ADMIN PROTECTION
-  // ... (Logika PUT di sini)
+router.put('/:id', isAdmin, validateUserUpdate, (req, res) => {
   if (!global.users) { return res.status(500).json({ error: 'User data not initialized' }); }
   const userIndex = global.users.findIndex(u => u.id === req.params.id);
   if (userIndex === -1) { return res.status(404).json({ error: 'User not found' }); }
   const { name, email, age, role } = req.body;
   
-  // (Logika cek email duplikat)
   if (email) {
     const existingUser = global.users.find(u => u.email === email && u.id !== req.params.id);
     if (existingUser) { return res.status(409).json({ error: 'Email already exists' }); }
@@ -64,8 +53,7 @@ router.put('/:id', isAdmin, validateUserUpdate, (req, res) => { // <-- ADMIN PRO
   res.json({ message: 'User updated successfully', user: userWithoutPassword });
 });
 
-// DELETE /api/users/:id - Delete user (HANYA ADMIN)
-router.delete('/:id', isAdmin, (req, res) => { // <-- ADMIN PROTECTION
+router.delete('/:id', isAdmin, (req, res) => {
   if (!global.users) { return res.status(500).json({ error: 'User data not initialized' }); }
   const userIndex = global.users.findIndex(u => u.id === req.params.id);
   if (userIndex === -1) { return res.status(404).json({ error: 'User not found' }); }
@@ -75,8 +63,7 @@ router.delete('/:id', isAdmin, (req, res) => { // <-- ADMIN PROTECTION
   res.json({ message: 'User deleted successfully', user: userWithoutPassword });
 });
 
-// ENDPOINT BARU: PUT /api/users/:id/role - Ubah role user (HANYA ADMIN)
-router.put('/:id/role', isAdmin, (req, res) => { // <-- ADMIN PROTECTION
+router.put('/:id/role', isAdmin, (req, res) => {
   const { role } = req.body;
   if (!role || (role !== 'admin' && role !== 'user')) {
     return res.status(400).json({ error: "Invalid role. Must be 'admin' or 'user'." });
